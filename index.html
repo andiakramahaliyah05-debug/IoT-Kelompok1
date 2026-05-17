@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Farming Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark: #0a1f0d; --green-mid: #143318; --green-accent: #2ecc71;
+      --amber: #f39c12; --blue: #3498db; --red: #e74c3c; --purple: #9b59b6;
+      --white: #f0f4f0; --muted: #7a9c80;
+      --card: rgba(20, 51, 24, 0.7); --border: rgba(46, 204, 113, 0.15);
+      --font: 'Space Grotesk', sans-serif; --mono: 'JetBrains Mono', monospace;
+    }
+
+    body {
+      font-family: var(--font); background-color: var(--green-dark); color: var(--white);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 60% 40% at 20% 10%, rgba(46,204,113,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 60% at 80% 90%, rgba(52,152,219,0.06) 0%, transparent 60%),
+        url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%232ecc71' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    header { display: flex; align-items: center; justify-content: space-between; padding: 24px 40px 20px; border-bottom: 1px solid var(--border); }
+    .logo { display: flex; align-items: center; gap: 14px; }
+    .logo-icon { width: 42px; height: 42px; background: linear-gradient(135deg, var(--green-accent), #27ae60); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; box-shadow: 0 0 24px rgba(46,204,113,0.3); }
+    .logo h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; color: var(--white); }
+    .logo span { font-size: 12px; color: var(--muted); font-weight: 400; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-accent); box-shadow: 0 0 8px var(--green-accent); animation: pulse 2s ease-in-out infinite; }
+    .status-dot.offline { background: var(--red); box-shadow: 0 0 8px var(--red); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    #conn-text { font-size: 13px; color: var(--muted); font-weight: 500; }
+    #last-update { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+    main { padding: 32px 40px; display: flex; flex-direction: column; gap: 28px; }
+
+    .sensor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .sensor-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 32px; position: relative; overflow: hidden; backdrop-filter: blur(12px); transition: border-color .3s; }
+    .sensor-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-radius: 20px 20px 0 0; }
+    .sensor-card.soil::before { background: linear-gradient(90deg, var(--green-accent), transparent); }
+    .sensor-card.light::before { background: linear-gradient(90deg, var(--amber), transparent); }
+
+    .card-label { font-size: 12px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .card-value { font-family: var(--mono); font-size: 52px; font-weight: 500; line-height: 1; color: var(--white); margin-bottom: 4px; }
+    .card-value span { font-size: 20px; color: var(--muted); font-weight: 400; }
+    .card-raw { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    .card-bar-track { margin-top: 20px; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+    .card-bar-fill { height: 100%; border-radius: 999px; transition: width .6s ease; }
+    .soil .card-bar-fill { background: linear-gradient(90deg, var(--green-accent), #27ae60); }
+    .light .card-bar-fill { background: linear-gradient(90deg, var(--amber), #e67e22); }
+
+    .card-status { margin-top: 14px; display: inline-block; font-size: 12px; font-weight: 500; padding: 4px 12px; border-radius: 999px; letter-spacing: .5px; }
+    .status-good { background: rgba(46,204,113,0.12); color: var(--green-accent); }
+    .status-warn { background: rgba(243,156,18,0.12); color: var(--amber); }
+    .status-bad  { background: rgba(231,76,60,0.12); color: var(--red); }
+
+    .pump-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 32px; backdrop-filter: blur(12px); display: flex; flex-direction: column; gap: 20px; }
+    .pump-top { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+    .pump-label { font-size: 12px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+    .pump-status-big { font-size: 28px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .pump-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); transition: all .3s; }
+    .pump-dot.on { background: var(--green-accent); box-shadow: 0 0 12px var(--green-accent); }
+    .pump-mode-text { font-size: 13px; color: var(--white); font-weight: bold; margin-top: 6px; background: rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 8px; display: inline-block; }
+
+    .pump-controls { display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap; }
+    .btn { padding: 12px 24px; border-radius: 12px; font-family: var(--font); font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all .2s; letter-spacing: .3px; }
+    .btn-start { background: var(--green-accent); color: var(--green-dark); }
+    .btn-start:hover { background: #27ae60; transform: translateY(-1px); box-shadow: 0 8px 20px rgba(46,204,113,0.3); }
+    .btn-stop { background: rgba(231,76,60,0.12); color: var(--red); border: 1px solid rgba(231,76,60,0.25); }
+    .btn-stop:hover { background: rgba(231,76,60,0.2); transform: translateY(-1px); }
+    .btn-auto { background: var(--blue); color: var(--white); border: 1px solid rgba(52,152,219,0.3); }
+    .btn-auto:hover { background: #2980b9; transform: translateY(-1px); }
+    .btn-schedule { background: var(--purple); color: var(--white); width: 100%; border: 1px solid rgba(155,89,182,0.5); margin-top: 5px;}
+    .btn-schedule:hover { background: #8e44ad; transform: translateY(-1px); }
+
+    /* SCHEDULE SECTION */
+    .schedule-box { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 20px; }
+    .schedule-inputs { display: flex; gap: 15px; margin-bottom: 15px; flex-wrap: wrap;}
+    .input-group { flex: 1; min-width: 140px; }
+    .input-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+    .input-group input { width: 100%; padding: 12px; border-radius: 10px; background: rgba(0,0,0,0.4); border: 1px solid var(--border); color: white; font-family: var(--mono); font-size: 14px; outline: none; transition: 0.3s;}
+    .input-group input:focus { border-color: var(--purple); box-shadow: 0 0 10px rgba(155,89,182,0.3); }
+    /* Agar icon jam di input time warnanya putih */
+    ::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
+
+    .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 28px 20px; backdrop-filter: blur(12px); }
+    .chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .chart-title { font-size: 14px; font-weight: 600; color: var(--white); }
+    .chart-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .chart-latest { font-family: var(--mono); font-size: 20px; font-weight: 500; text-align: right; }
+    .chart-canvas-wrap { height: 180px; position: relative; }
+
+    .history-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 28px 32px; backdrop-filter: blur(12px); }
+    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .history-title { font-size: 16px; font-weight: 700; }
+    .history-count { font-size: 12px; color: var(--muted); background: rgba(255,255,255,0.05); padding: 4px 12px; border-radius: 999px; }
+    .history-table { width: 100%; border-collapse: collapse; }
+    .history-table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); padding: 0 16px 12px; border-bottom: 1px solid var(--border); }
+    .history-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-table tr:hover td { background: rgba(46,204,113,0.04); }
+    .td-time { font-family: var(--mono); color: var(--muted); font-size: 12px; }
+    .td-val { font-family: var(--mono); font-weight: 500; }
+    .td-soil { color: var(--green-accent); }
+    .td-light { color: var(--amber); }
+    .history-empty { text-align: center; color: var(--muted); padding: 40px; font-size: 14px; }
+    .history-scroll { max-height: 360px; overflow-y: auto; }
+    .history-scroll::-webkit-scrollbar { width: 4px; }
+    .history-scroll::-webkit-scrollbar-track { background: transparent; }
+    .history-scroll::-webkit-scrollbar-thumb { background: rgba(46,204,113,0.2); border-radius: 2px; }
+
+    @media (max-width: 768px) {
+      main { padding: 20px 16px; }
+      header { padding: 16px 20px; }
+      .sensor-row, .charts-row { grid-template-columns: 1fr; }
+      .pump-top { grid-template-columns: 1fr; }
+      .card-value { font-size: 40px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌿</div>
+    <div>
+      <h1>Smart Farming</h1>
+      <span>IoT Monitoring System · Kelompok 1</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-dot" id="conn-dot"></div>
+    <span id="conn-text">Menghubungkan...</span>
+    <span id="last-update">–</span>
+  </div>
+</header>
+
+<main>
+  <!-- SENSOR REALTIME -->
+  <div class="sensor-row">
+    <div class="sensor-card soil">
+      <div class="card-label">Soil Moisture</div>
+      <div class="card-value" id="soil-pct">–<span>%</span></div>
+      <div class="card-raw" id="soil-raw">RAW: –</div>
+      <div class="card-bar-track"><div class="card-bar-fill" id="soil-bar" style="width:0%"></div></div>
+      <div class="card-status" id="soil-status">–</div>
+    </div>
+    <div class="sensor-card light">
+      <div class="card-label">Light Intensity</div>
+      <div class="card-value" id="light-pct">–<span>%</span></div>
+      <div class="card-raw" id="light-raw">RAW: –</div>
+      <div class="card-bar-track"><div class="card-bar-fill" id="light-bar" style="width:0%"></div></div>
+      <div class="card-status" id="light-status">–</div>
+    </div>
+  </div>
+
+  <!-- KONTROL POMPA & JADWAL -->
+  <div class="pump-card">
+    <div class="pump-top">
+      <div class="pump-info">
+        <div class="pump-label">Kontrol Pompa Air</div>
+        <div class="pump-status-big">
+          <div class="pump-dot" id="pump-dot"></div>
+          <span id="pump-label">OFF</span>
+        </div>
+        <div class="pump-mode-text" id="pump-mode">Mode: AUTO</div>
+      </div>
+      <div class="pump-controls">
+        <button class="btn btn-start" onclick="setMode('ON')">▶ Manual Start</button>
+        <button class="btn btn-stop" onclick="setMode('OFF')">■ Force Stop</button>
+        <button class="btn btn-auto" onclick="setMode('AUTO')">↻ Kembalikan ke Auto</button>
+      </div>
+    </div>
+
+    <div class="schedule-box">
+      <div class="pump-label" style="color: var(--purple);">⏰ Mode Penjadwalan Timer</div>
+      <div class="schedule-inputs">
+        <div class="input-group">
+          <label>Waktu Menyiram</label>
+          <input type="time" id="inp-time">
+        </div>
+        <div class="input-group">
+          <label>Durasi (Menit)</label>
+          <input type="number" id="inp-duration" min="1" max="120" placeholder="Contoh: 15">
+        </div>
+      </div>
+      <button class="btn btn-schedule" onclick="setSchedule()">📅 Simpan & Aktifkan Mode Jadwal</button>
+    </div>
+  </div>
+
+  <!-- GRAFIK -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div><div class="chart-title">Soil Moisture</div><div class="chart-sub">60 titik terakhir</div></div>
+        <div class="chart-latest td-soil" id="chart-soil-val">–</div>
+      </div>
+      <div class="chart-canvas-wrap"><canvas id="chart-soil"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-header">
+        <div><div class="chart-title">Light Intensity</div><div class="chart-sub">60 titik terakhir</div></div>
+        <div class="chart-latest td-light" id="chart-light-val">–</div>
+      </div>
+      <div class="chart-canvas-wrap"><canvas id="chart-light"></canvas></div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="history-card">
+    <div class="history-header">
+      <div class="history-title">📋 Riwayat Data (Semua Tanggal)</div>
+      <span class="history-count" id="hist-count">0 catatan</span>
+    </div>
+    <div class="history-scroll">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>Waktu</th>
+            <th>Soil Moisture (RAW)</th>
+            <th>Light Intensity (RAW)</th>
+            <th>Soil %</th>
+            <th>Light %</th>
+          </tr>
+        </thead>
+        <tbody id="hist-body">
+          <tr><td colspan="5" class="history-empty">Memuat riwayat...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyChWNpAmyIHVQH9yIKYRxY4iWEMDApsDcg",
+    authDomain: "iot-kelompok-1-e3873.firebaseapp.com",
+    databaseURL: "https://iot-kelompok-1-e3873-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "iot-kelompok-1-e3873"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  const SOIL_DRY = 4095, SOIL_WET = 500;
+  const LDR_MAX  = 4095;
+
+  function soilToPercent(raw) {
+    const p = ((SOIL_DRY - raw) / (SOIL_DRY - SOIL_WET)) * 100;
+    return Math.max(0, Math.min(100, Math.round(p)));
+  }
+  function lightToPercent(raw) {
+    return Math.max(0, Math.min(100, Math.round((raw / LDR_MAX) * 100)));
+  }
+
+  const chartOpts = (color, label) => ({
+    type: 'line',
+    data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '18', fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2 }] },
+    options: { responsive: true, maintainAspectRatio: false, animation: { duration: 300 }, scales: { x: { display: false }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#7a9c80', font: { family: 'JetBrains Mono', size: 10 } }, border: { display: false } } }, plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(10,31,13,0.9)', titleColor: '#7a9c80', bodyColor: '#f0f4f0', borderColor: 'rgba(46,204,113,0.2)', borderWidth: 1, titleFont: { family: 'JetBrains Mono' }, bodyFont: { family: 'JetBrains Mono' } }} }
+  });
+
+  const soilChart  = new Chart(document.getElementById('chart-soil'),  chartOpts('#2ecc71', 'Soil'));
+  const lightChart = new Chart(document.getElementById('chart-light'), chartOpts('#f39c12', 'Light'));
+  const MAX_POINTS = 60;
+
+  function pushChart(chart, value) {
+    const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    chart.data.labels.push(now);
+    chart.data.datasets[0].data.push(value);
+    if (chart.data.labels.length > MAX_POINTS) {
+      chart.data.labels.shift();
+      chart.data.datasets[0].data.shift();
+    }
+    chart.update('none');
+  }
+
+  const connDot  = document.getElementById('conn-dot');
+  const connText = document.getElementById('conn-text');
+
+  // DATA LISTENER
+  db.ref('SmartFarming/Data').on('value', snap => {
+    const d = snap.val();
+    if (!d) return;
+
+    connDot.className = 'status-dot';
+    connText.textContent = 'Terhubung';
+    document.getElementById('last-update').textContent = 'Update: ' + new Date().toLocaleTimeString('id-ID');
+
+    // Soil
+    const rawSoil = d.kelembaban_tanah ?? 0;
+    const soilPct = soilToPercent(rawSoil);
+    document.getElementById('soil-pct').innerHTML = soilPct + '<span>%</span>';
+    document.getElementById('soil-raw').textContent = 'RAW: ' + rawSoil;
+    document.getElementById('soil-bar').style.width = soilPct + '%';
+    const soilSt = document.getElementById('soil-status');
+    if (soilPct >= 60) { soilSt.textContent = '● Basah'; soilSt.className = 'card-status status-good'; }
+    else if (soilPct >= 30) { soilSt.textContent = '● Sedang'; soilSt.className = 'card-status status-warn'; }
+    else { soilSt.textContent = '● Kering!'; soilSt.className = 'card-status status-bad'; }
+    pushChart(soilChart, soilPct);
+    document.getElementById('chart-soil-val').textContent = soilPct + '%';
+
+    // Light
+    const rawLDR  = d.cahaya ?? 0;
+    const lightPct = lightToPercent(rawLDR);
+    document.getElementById('light-pct').innerHTML = lightPct + '<span>%</span>';
+    document.getElementById('light-raw').textContent = 'RAW: ' + rawLDR;
+    document.getElementById('light-bar').style.width = lightPct + '%';
+    const lightSt = document.getElementById('light-status');
+    if (lightPct >= 60) { lightSt.textContent = '● Terang'; lightSt.className = 'card-status status-good'; }
+    else if (lightPct >= 30) { lightSt.textContent = '● Redup'; lightSt.className = 'card-status status-warn'; }
+    else { lightSt.textContent = '● Gelap'; lightSt.className = 'card-status status-bad'; }
+    pushChart(lightChart, lightPct);
+    document.getElementById('chart-light-val').textContent = lightPct + '%';
+
+    // Pump Status (Membaca kondisi NYATA dari alat)
+    const on = !!d.status_pompa;
+    document.getElementById('pump-dot').className = 'pump-dot' + (on ? ' on' : '');
+    document.getElementById('pump-label').textContent = on ? 'ON' : 'OFF';
+  });
+
+  // CONTROL LISTENER (Mengambil data jadwal & mode saat web dibuka)
+  db.ref('SmartFarming/Control').on('value', snap => {
+    const data = snap.val();
+    if(!data) return;
+    
+    const mode = data.mode_pompa || 'AUTO';
+    document.getElementById('pump-mode').textContent = 'Mode Aktif: ' + mode;
+    
+    // Mengisi form dengan jadwal yang tersimpan
+    if(data.jadwal_waktu) document.getElementById('inp-time').value = data.jadwal_waktu;
+    if(data.durasi_menit) document.getElementById('inp-duration').value = data.durasi_menit;
+  });
+
+  db.ref('.info/connected').on('value', snap => {
+    if (!snap.val()) { connDot.className = 'status-dot offline'; connText.textContent = 'Terputus'; }
+  });
+
+  // FUNGSI SET MODE (ON / OFF / AUTO)
+  function setMode(modeStr) {
+    db.ref('SmartFarming/Control/mode_pompa').set(modeStr).catch((error) => {
+        alert("PERINTAH GAGAL DIKIRIM!\nError: " + error.message);
+    });
+  }
+
+  // FUNGSI SIMPAN JADWAL (Mengeset ke mode SCHEDULE)
+  function setSchedule() {
+    const timeVal = document.getElementById('inp-time').value; // Format "HH:MM"
+    const durVal = parseInt(document.getElementById('inp-duration').value);
+
+    if(!timeVal || !durVal || durVal < 1) {
+        alert("Harap isi waktu (Jam) dan durasi (minimal 1 Menit) dengan benar!");
+        return;
+    }
+
+    // Mengupdate 3 data sekaligus ke Firebase
+    const updates = {
+        'SmartFarming/Control/jadwal_waktu': timeVal,
+        'SmartFarming/Control/durasi_menit': durVal,
+        'SmartFarming/Control/mode_pompa': 'SCHEDULE'
+    };
+
+    db.ref().update(updates).then(() => {
+        alert(`Jadwal Berhasil Disimpan!\nPompa akan otomatis menyala setiap jam ${timeVal} selama ${durVal} menit.`);
+    }).catch((error) => {
+        alert("Gagal menyimpan jadwal: " + error.message);
+    });
+  }
+
+  // HISTORY
+  db.ref('SmartFarming/History').on('value', snap => {
+    const data = snap.val();
+    const tbody = document.getElementById('hist-body');
+    if (!data) {
+      tbody.innerHTML = '<tr><td colspan="5" class="history-empty">Belum ada riwayat.</td></tr>';
+      document.getElementById('hist-count').textContent = '0 catatan';
+      return;
+    }
+    const rows = Object.entries(data).reverse(); 
+    document.getElementById('hist-count').textContent = rows.length + ' catatan';
+    tbody.innerHTML = rows.map(([key, item]) => {
+      const s = soilToPercent(item.kelembaban_tanah ?? 0);
+      const l = lightToPercent(item.cahaya ?? 0);
+      return `<tr>
+        <td class="td-time">${item.waktu ?? '–'}</td>
+        <td class="td-val td-soil">${item.kelembaban_tanah ?? '–'}</td>
+        <td class="td-val td-light">${item.cahaya ?? '–'}</td>
+        <td class="td-val td-soil">${s}%</td>
+        <td class="td-val td-light">${l}%</td>
+      </tr>`;
+    }).join('');
+  });
+</script>
+</body>
+</html>
